@@ -1,0 +1,128 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Levshinovskiy Mikhail"
+date: "31 08 2021"
+output: html_document
+---
+
+## Introduction
+
+The goal of the work is to predict how correctly participants perform barbell lifts
+using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+Each exercise is graded from A to E based on how well the exercise was performed.
+
+## Materials and methods
+
+Original dataset includes data of 6 participants who were asked to perform barbell lifts
+correctly and incorrectly in 5 different ways. The dataset has 19622 lines of
+160 variables. Firstly, variables that have *NA* and empty values will be removed
+from the dataset. Then "time" variables will be removed. Next step will be to check
+correlation between predictors, and removing predictors with strong positive correlation
+for reducing dispersion of final model. After that dataset will be split into "training" and
+"testing" parts. There will be calculated a few models, and then
+they will be compared on "testing" part of original dataset. The best model will be
+validate with testing dataset, and it's prediction results will be used for coursera's test.
+
+There will be used next methods of statistical learning: *decision tree classifier*,
+*naive Bayes* and *random forest*.
+
+## Calculations
+
+```{r message=FALSE, cache=TRUE, warning=FALSE}
+set.seed(123123)
+
+# Import required libraries.
+library(caret)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(Rcpp)
+library(e1071)
+library(klaR)
+
+# Data import
+training <- read.csv("pml-training.csv")
+
+# Remove variables that have NA values
+training2 <- training[ , colSums(is.na(training)) == 0]
+
+# Remove variables that have empty values
+training3 <- training2[ , colSums(training2 == "") == 0]
+
+# Set some variables to factor.
+training3$classe <- as.factor(training3$classe)
+training3$user_name <- as.factor(training3$user_name)
+training3$new_window <- as.factor(training3$new_window)
+
+# Remove participant and time variables.
+training4 <- training3[, 8:60]
+
+# Delete variables with high positive correlation (above 0.7)
+tmp <- cor(training4[1:52])
+tmp[!lower.tri(tmp)] <- 0
+training5 <- training4[,!apply(tmp, 2, function(x) any(x > 0.7))]
+training5$classe <- training4$classe
+
+# Split the dataset on training and testing parts.
+inTrain <- createDataPartition(y = training5$classe, p = 0.7, list = F)
+training6 <- training5[inTrain,]
+testing6 <- training5[-inTrain,]
+
+# Use different stasistical learning methods for calculate predictions.
+
+mod1 <- train(classe ~ ., method = 'rpart', data = training6)
+mod1_cm <- confusionMatrix(predict(mod1, newdata = testing6), testing6$classe)
+mod2 <- train(classe ~ ., method = 'nb', data = training6)
+mod2_cm <- confusionMatrix(predict(mod2, newdata = testing6), testing6$classe)
+mod3 <- train(classe ~ ., method = 'rf', data = training6)
+mod3_cm <- confusionMatrix(predict(mod3, newdata = testing6), testing6$classe)
+```
+
+## Results and discusions
+
+Check confusion matrix for different models:
+For decision tree:  
+```{r echo=FALSE}
+mod1_cm$table
+mod1_cm$overall[1]
+```
+  
+For Naive Bayes method:  
+```{r echo=FALSE}
+mod2_cm$table
+mod2_cm$overall[1]
+```
+  
+For Random forest method:  
+```{r echo=FALSE}
+mod3_cm$table
+mod3_cm$overall[1]
+```
+  
+Accuracy of Random Forest method is much higher, than for other used methods,
+so this model is chosen for validation test.
+
+To perform validation test testing dataset have to be modified to have format of
+the model.
+
+```{r}
+library(dplyr)
+# Data import
+testing <- read.csv("pml-testing.csv")
+
+# MOdify dataset
+names_short <- names(training6)
+testing2 <- testing %>% select(names_short[1:35])
+
+# Calculate preditions
+testing2$classe <- predict(mod3, newdata = testing2)
+```
+
+Predictions for test dataset:  
+```{r echo=FALSE}
+testing2$classe
+```
+
+## Conclusions
+
+With expected accuracy *0.99* model predict *100%* values in validation dataset.
